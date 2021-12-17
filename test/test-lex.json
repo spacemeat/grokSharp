@@ -1,0 +1,71 @@
+{
+	"tokens": {
+		"\\s|,": 						{ "kind": "whitespace" },
+		"\/\\*(.|\\n)*\\*\/":			{ "kind": "c_comment" },
+		"\/\/.*$": 						{ "kind": "c++_comment" },
+		":": 							{ "kind": "key_value_separator" },
+		"[": 							{ "kind": "list_begin" },
+		"]": 							{ "kind": "list_end" },
+		"{": 							{ "kind": "dict_begin" },
+		"}": 							{ "kind": "dict_end" },
+		"@": 							{ "kind": "annotation_mark" },
+		"'(.|\\n)*'": 					{ "kind": "word_squote" },
+		"\"(.|\\n)*\"":					{ "kind": "word_dquote" },
+		"`(.|\\n)*`": 					{ "kind": "word_backquote" },
+		"(\\^(.|\\n)*\\^)(.|\\n)*\\1": 	{ "kind": "word_heredoc" },
+		"\\S+": 						{ "kind": "word" }
+	},
+	"grammar": {
+		"associations": {
+			"default": "left"
+		}
+		"prouctions": {
+			"trove": {
+				"node"
+			}
+
+
+		}
+	}
+}
+
+
+trove		: node
+
+node		: list
+ 			| list annotation
+ 			| dict
+ 			| dict annotation
+ 			| value
+ 			| value annotation
+
+list		: list_begin sequence list_end
+ 			| list_begin annotation sequence list_end
+
+dict		: dict_begin keynodesequence dict_end
+			| dict_begin annotation keynodesequence dict_end
+
+value		: word_squote
+			| word_dquote
+			| word_backquote
+			| word_heredoc
+			| word
+
+sequence	: sequence node
+			| e
+
+keynodesequence	: keynodesequence keynode
+			| e
+
+keynode		: value key_value_separator node
+			| value annotation key_value_separator node
+			| value key_value_separator annotation node
+			| value annotation key_value_separator annotation node
+
+annotation	: annotation_mark dict_begin keyvaluesequence dict_end
+			| annotation_mark keyvalue
+
+keyvaluesequence : keyvaluesequence keyvalue
+			| e
+
+keyvalue:	: value key_value_separator value
