@@ -174,6 +174,10 @@ public class Production
 
     public void AddProduction(IEnumerable<string> derivation)
     {
+        if (nonterminal == "B")
+        {
+            Console.WriteLine($"Adding B -> {string.Join(' ', derivation)} ({derivation.Count()} members)");
+        }
         int hash = string.Join(' ', from s in derivation select s).GetHashCode();
         if ((from r in rules where r.hash == hash select r).Count() == 0)
         {
@@ -210,6 +214,34 @@ public class ProductionSet
         from di in p.rules.WithIdxs()
         select (p.nonterminal, di.idx, di.item);
 
+    /* - Haven't tested, may not need it, it's lousy perf
+    public IEnumerable<(string nonterminal, int idx, ProdRule prodRule)> ProductionsTopDown(string startSymbol, IEnumerable<string> terminals)
+    {
+        var nontermsYetToBeYielded = new Stack<string>();
+        nontermsYetToBeYielded.Push(startSymbol);
+        var yielded = new HashSet<string>(terminals);
+        yielded.Add(startSymbol);
+
+        while (nontermsYetToBeYielded.Count() > 0)
+        {
+            string nonterm = nontermsYetToBeYielded.Pop();
+
+            foreach (var (nonterminal, idx, prodRule) in
+                (from di in productions[productionIndices[nonterm].rules.WithIdxs()
+                 select (p.nonterminal, di.idx, di.item)))
+            {
+                yield (nonterminal, idx, prodRule);
+                yielded.Add(nonterminal);
+                foreach (var s in di.item.derivative)
+                {
+                    if (yielded.Contains(s) == false)
+                        { nontermsYetToBeYielded.Push(s); }
+                }
+            }
+        }
+    }
+    */
+
     public IEnumerable<(string nonterminal, int idx, ProdRule prodRule)> ProductionsOf(string nonterminal) =>
         from di in productions[productionIndices[nonterminal]].rules.WithIdxs()
         select (nonterminal, di.idx, di.item);
@@ -222,13 +254,30 @@ public class ProductionSet
         (from p in productions
          from di in p.rules.WithIdxs() where (di.item.derivation.Count() == 1
                                            && di.item.derivation[0] == string.Empty)
-         select (p.nonterminal, di.idx)).FirstOrDefault();
+         select (p.nonterminal, di.idx)).FirstOrDefault((string.Empty, -1));
 
     public (string nonterminal, int idx) FirstNonterminalWithUnitRule =>
         (from p in productions
          from di in p.rules.WithIdxs() where (di.item.derivation.Count() == 1
-                                            && Nonterminals.Contains(di.item.derivation[0]))
-         select (p.nonterminal, di.idx)).FirstOrDefault();
+                                           && Nonterminals.Contains(di.item.derivation[0]))
+         select (p.nonterminal, di.idx)).FirstOrDefault((string.Empty, -1));
+
+    public IEnumerable<(string nonterminal, int idx, ProdRule prodRule)> UnitRules =>
+        from p in productions                                                               // A -> {x1|x2|x3}
+        from di in p.rules.WithIdxs() where (di.item.derivation.Count() == 1                // unitary prod xn == B
+                                          && Nonterminals.Contains(di.item.derivation[0]))  // that is a nonterminal
+        select (p.nonterminal, di.idx, di.item);
+
+
+    public IEnumerable<(string nonterminal, int idx, ProdRule prodRule)> ProductionsReferencing(string symbol)
+    {
+        return
+            from p in productions
+            from di in p.rules.WithIdxs()
+            from s in di.item.derivation
+            where s == symbol
+            select (p.nonterminal, di.idx, di.item);
+    }
 
     public IEnumerable<(string nonterminal, int idx, ProdRule prodRule)> ProductionsReferencing(IEnumerable<string> symbols)
     {
@@ -251,6 +300,8 @@ public class ProductionSet
 
     public void Add(string nonterminal, IEnumerable<string> derivation)
     {
+        Console.WriteLine($"ADD RULE: {nonterminal} -> {string.Join(' ', derivation)}");
+
         Production prod;
         int nonterminalIdx = -1;
         if (productionIndices.TryGetValue(nonterminal, out nonterminalIdx) == false)
@@ -275,6 +326,9 @@ public class ProductionSet
         if (productionIndices.TryGetValue(nonterminal, out nonterminalIdx))
         {
             Production prod = productions[nonterminalIdx];
+
+            Console.WriteLine($"REMOVE RULE {nonterminal} -> {string.Join(' ', prod.rules[idx].derivation)}");
+
             prod.RemoveProduction(idx);
             if (prod.rules.Count() == 0)
             {
@@ -289,11 +343,35 @@ public class ProductionSet
         }
     }
 
-    public string GenerateBnf()
+    public void MoveToFront(string nonterminal)
+    {
+        int idx = productionIndices[nonterminal];
+        var prod = productions[idx];
+        for (int i = idx - 1; i >= 0; --i)
+            { productions[i + 1] = productions[i]; }
+        productions[0] = prod;
+
+        foreach(var (nonterm, i) in productionIndices)
+        {
+            if (i < idx)
+            {
+                productionIndices[nonterm] = i + 1;
+            }
+            else if (i == idx)
+            {
+                productionIndices[nonterm] = 0;
+            }
+        }
+    }
+
+    public string GenerateBnf(string startSymbol = "")
     {
         var sb = new StringBuilder();
 
         int maxNonterminalNameLen = (from t in Nonterminals select t.Length).Max();
+
+        if (startSymbol != string.Empty)
+            { sb.Append($"Start symbol: {startSymbol}\n\n"); }
 
         foreach (var prod in productions)
         {
@@ -309,7 +387,7 @@ public class ProductionSet
 
                 var ps  = prodRule.derivation;
                 if (ps == null || ps.Count() == 0)
-                    { sb.Append("{ e }\n"); }
+                    { sb.Append("\n"); }
                 else
                     { sb.Append(string.Join(' ', ps)).Append('\n'); }
 
@@ -354,6 +432,7 @@ public class Grammar
         if (startSymbol)
         {
             this.startSymbol = nonterminal;
+            productions.MoveToFront(this.startSymbol);
         }
     }
 
@@ -365,7 +444,7 @@ public class Grammar
 
     public string GenerateBnf()
     {
-        return productions.GenerateBnf();
+        return productions.GenerateBnf(startSymbol);
     }
 
     public IEnumerable<Token> GenerateTokens(string src)
@@ -388,21 +467,19 @@ public class Grammar
         HashSet<string> searchSymbols = new HashSet<string>(g.Terminals);
         HashSet<string> searchSymbolsToAdd = new HashSet<string>(g.Terminals);
 
-        // W = get all nonterminals that reference terminals,
+        // searchSymbols = get all nonterminals that reference terminals,
         // and all nonterminals that reference those, etc
         do {
             searchSymbolsToAdd.Clear();
             foreach(var th in g.productions.ProductionsReferencing(searchSymbols.ToArray()))
             {
                 if (searchSymbols.Contains(th.nonterminal) == false)
-                {
-                    searchSymbolsToAdd.Add(th.nonterminal);
-                }
+                    { searchSymbolsToAdd.Add(th.nonterminal); }
             }
             searchSymbols.UnionWith(searchSymbolsToAdd);
         } while (searchSymbolsToAdd.Count() > 0);
 
-        // now remove all productions that contain nonterminals which aren't in W
+        // now remove all productions that contain nonterminals which aren't in searchSymbols
         var removals = new List<(string nonterminal, int ruleIdx)>();
         foreach (var (nonterminal, idx, prodRule) in g.productions.Productions)
         {
@@ -413,14 +490,11 @@ public class Grammar
             }
         }
 
-        // Removals is in index-ascending order, which won't do for sequential
+        // Removals are in index-ascending order, which won't do for sequential
         // deleting by index. We can reverse the works though, and be safe.
         removals.Reverse();
-
         foreach (var (nonterminal, idx) in removals)
-        {
-            g.productions.Remove(nonterminal, idx);
-        }
+            { g.productions.Remove(nonterminal, idx); }
 
         return g;
     }
@@ -428,14 +502,6 @@ public class Grammar
     public Grammar ReduceTopDown()
     {
         Grammar g = new Grammar(lexer);
-
-        //  W = S,
-        //  P = {S.rules}
-        //  do
-        //      W += all symbols in P
-        //      for each W w:
-        //          P += {w.rules}
-        //  while W is growing
 
         HashSet<string> W = new HashSet<string>();
         HashSet<string> wToAdd = new HashSet<string>();
@@ -481,8 +547,46 @@ public class Grammar
     {
         Grammar g = new Grammar(this);
 
+        // find all unit pairs
+        var unitRules = g.productions.UnitRules;
+        var addedProds = new List<(string nonterminal, string [] derivation)>();
+
+        // add all nonunit productions as appropriate
+        foreach (var (nonterm, ruleIdx, prodRule) in unitRules)
+        {
+            string unitProd = prodRule.derivation[0];
+            if (unitProd == nonterm)
+                { continue; }       // Do not copy my own rules to myself. I have them already.
+
+            Console.WriteLine($"Unit production: {nonterm}:{ruleIdx} -> {unitProd}");
+
+            foreach (var (nontermRep, ruleIdxRep, prodRuleRep) in g.productions.ProductionsOf(unitProd))
+            {
+                Console.WriteLine($"Writing rule {nonterm} -> {string.Join(' ', prodRuleRep.derivation)}");
+                addedProds.Add((nonterm, prodRuleRep.derivation.ToArray()));
+            }
+        }
+
+        foreach (var (nonterm, deriv) in addedProds)
+            { g.Prod(nonterm, deriv); }
+
+        // remove all unit productions of any kind
+        // Run this op again because the above may have added new unit rules. (They're still removable though.)
+        var unitRulesArr = g.productions.UnitRules.ToList();
+        unitRulesArr.Reverse();    // removing several rules from a prod, we do so in reverse order so the indices
+                                   // of future removals don't get out of match
+        var s = string.Join('\n',
+                            from prod in unitRulesArr
+                            select $"{prod.nonterminal}:{prod.idx} -> " + string.Join(' ', prod.prodRule.derivation));
+        Console.WriteLine($"REMOVING: {s}");
+        foreach (var (nonterm, ruleIdx, prodRule) in unitRulesArr)
+        {
+            g.productions.Remove(nonterm, ruleIdx);
+        }
+
+        /*
         var (nonterm, ruleIdx) = g.productions.FirstNonterminalWithUnitRule;
-        while (nonterm != null)
+        while (nonterm != string.Empty)
         {
             Console.WriteLine($"Unit production: {nonterm}:{ruleIdx}");
 
@@ -496,22 +600,28 @@ public class Grammar
             if (unitProd == null)
                 { throw new Exception($"what fuckery is this?"); }
 
-            // now visit every prod that references this nonterminal, and replace
-            // them with versions with and without this nonterminal in the production
-            foreach (var (nontermRep, ruleIdxRep, prodRuleRep) in g.productions.ProductionsOf(unitProd))
+            // if S -> S, just kill it dead; otherwise, S -> A, so add S -> {all of A's productions}
+            if (unitProd != nonterm)
             {
-                Console.WriteLine($"Writing rule {nonterm} -> {string.Join(' ', prodRuleRep.derivation)}");
-                addedProds.Add((nonterm, prodRuleRep.derivation.ToArray()));
+                foreach (var (nontermRep, ruleIdxRep, prodRuleRep) in g.productions.ProductionsOf(unitProd))
+                {
+                    Console.WriteLine($"Writing rule {nonterm} -> {string.Join(' ', prodRuleRep.derivation)}");
+                    addedProds.Add((nonterm, prodRuleRep.derivation.ToArray()));
+                }
             }
 
             g.productions.Remove(nonterm, ruleIdx);
 
             // add prods we created
             foreach (var ap in addedProds)
-                { g.Prod(ap.nonterminal, ap.derivation); }
+                { g.Prod(ap.nonterminal, ap.derivation, ap.nonterminal == startSymbol); }
+
+            Console.WriteLine($"QUICK BNF: \n{g.GenerateBnf()}");
+            //Console.ReadLine();
 
             (nonterm, ruleIdx) = g.productions.FirstNonterminalWithUnitRule;
         }
+        */
 
         return g;
     }
@@ -521,7 +631,7 @@ public class Grammar
         Grammar g = new Grammar(this);
 
         var (nonterm, ruleIdx) = g.productions.FirstNonterminalWithEmptyRule;
-        while (nonterm != null)
+        while (nonterm != string.Empty)
         {
             Console.WriteLine($"Null production: {nonterm}:{ruleIdx}");
             if (nonterm == g.productions.Nonterminals.First())  // do not eliminate start->e
@@ -540,8 +650,8 @@ public class Grammar
                 if (symRefs.Length > 0)
                 {
                     Console.WriteLine($"Found {nonterm} in production rule for {nontermRep}:{ruleIdxRep}: {string.Join(' ', symRefs)}");
-                    if (prodRuleRep.derivation.Count() == 1)
-                        { continue; }   // do not add empty productions
+                    //if (prodRuleRep.derivation.Count() == 1)
+                    //    { continue; }   // do not add empty productions
 
                     // Each i is a bitmask for permutations of symbol occurrences in the rule.
                     for (int i = 0; i < (1 << symRefs.Length) - 1; ++i)
@@ -564,7 +674,12 @@ public class Grammar
                             }
                         }
 
-                        Console.WriteLine($"Writing rule {nontermRep} -> {string.Join(' ', newRule)}");
+                        // A unit nonterm which gets removed results in a null production. This will
+                        // get pushed further out on each iteration of the outer while loop.
+                        if (newRule.Count() == 0)
+                            { newRule.Add(string.Empty); }
+
+                        Console.WriteLine($"Writing rule {nontermRep} -> {string.Join(' ', newRule)} ({newRule.Count()} members)");
                         addedProds.Add((nontermRep, newRule.ToArray()));
                     }
                 }
@@ -578,6 +693,42 @@ public class Grammar
         }
 
         return g;
+    }
+
+    public string GetNewNonterminal(string baseName = "")
+    {
+        if (baseName == string.Empty)
+            { baseName = "NewNonterminal"; }
+
+        for (int i = 0; i < int.MaxValue; ++i)
+        {
+            var name = $"{baseName}_{i}";
+            if (productions.ProductionsReferencing(name).Count() == 0)
+            {
+                return name;
+            }
+        }
+
+        throw new Exception("Could not find a nonconflicting nonterminal name. Maybe I should have tried harder. But I didn't. womp womp");
+    }
+
+    public Grammar AbstractifyStartSymbol()
+    {
+        if (productions.ProductionsReferencing(startSymbol).Count() > 0)
+        {
+            var g = new Grammar(this);
+            g.Prod(g.GetNewNonterminal(startSymbol), new [] {startSymbol}, true);
+            return g;
+        }
+        else
+        {
+            return this;
+        }
+    }
+
+    public Grammar EliminateCycles()
+    {
+        return this;
     }
 
     public Grammar EliminateImmediateLeftRecursion()

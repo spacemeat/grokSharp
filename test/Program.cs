@@ -20,6 +20,8 @@ l.Lex("word_heredoc",       @"(\^(.|\n)*?\^)(.|\n)*\1"  );
 l.Lex("word",               @"[^\s\{\}\[\]\:,@]+?(?=(\/\*)|(\/\/)|[\s\{\}\[\]\:,@]|$)");
 
 var g = new Grammar(l);
+/**/
+
 g.Prod("trove",             new [] { "node" }, true );
 g.Prod("node",              new [] { "list" } );
 g.Prod("node",              new [] { "list", "annotation" } );
@@ -50,6 +52,7 @@ g.Prod("keyValueSequence",  new [] { "keyValueSequence", "keyValue" } );
 g.Prod("keyValueSequence",  new [] { string.Empty } );
 g.Prod("keyValue",          new [] { "value", "keyValueSeparator", "value" } );
 
+Console.WriteLine($"\n  ---------------- HUMON: start = {g.StartSymbol}\n");
 Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
 
 Console.WriteLine($"\n  - Src:\n{src}");
@@ -82,6 +85,47 @@ g.Prod("C", new [] { "B", "C" } );
 g.Prod("E", new [] { "a", "A" } );
 g.Prod("E", new [] { "e" } );
 
+Console.WriteLine($"\n  ---------------- ACES: start = {g.StartSymbol}\n");
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
+
+Console.WriteLine($"\n - Bottom-up reduction");
+g = g.ReduceBottomUp();
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
+// should be: S -> AC; A -> a; C -> c; E -> aA | E;
+
+Console.WriteLine($"\n - Top-down reduction");
+g = g.ReduceTopDown();
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
+// should be: S -> AC; A -> a; C -> c;
+
+l = new RegexLexer();
+l.Lex("a", "a");
+l.Lex("b", "b");
+
+g = new Grammar(l);
+g.Prod("S", new [] { "A", "S", "B" }, true );
+g.Prod("A", new [] { "a", "A", "S" } );
+g.Prod("A", new [] { "a" } );
+g.Prod("A", new [] { string.Empty } );
+g.Prod("B", new [] { "S", "b", "S" } );
+g.Prod("B", new [] { "A" } );
+g.Prod("B", new [] { "b", "b" } );
+
+Console.WriteLine($"\n  ---------------- SAB: start = {g.StartSymbol}\n");
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
+
+Console.WriteLine($"\n - AbstractifyStartSymbol");
+g = g.AbstractifyStartSymbol();
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
+
+Console.WriteLine($"\n - Eliminating null productions");
+g = g.EliminateNullProductions();
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
+
+Console.WriteLine($"\n - Eliminating unit productions");
+g = g.EliminateUnitProductions();
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
+
 Console.WriteLine($"\n - Bottom-up reduction");
 g = g.ReduceBottomUp();
 Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
@@ -90,6 +134,37 @@ Console.WriteLine($"\n - Top-down reduction");
 g = g.ReduceTopDown();
 Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
 
+
+
+/*
+l = new RegexLexer();
+l.Lex("a", "a");
+l.Lex("b", "b");
+
+g = new Grammar(l);
+g.Prod("S_0", new [] { "A", "S", "B" }, true );
+g.Prod("S_0", new [] { "S", "B" }, true );
+g.Prod("S_0", new [] { "A", "S" }, true );
+g.Prod("S_0", new [] { "R" }, true );
+g.Prod("R", new [] { "S" } );
+g.Prod("S", new [] { "A", "S", "B" } );
+g.Prod("S", new [] { "S", "B" } );
+g.Prod("S", new [] { "A", "S" } );
+g.Prod("S", new [] { "R" } );
+g.Prod("A", new [] { "a", "A", "S" } );
+g.Prod("A", new [] { "a" } );
+g.Prod("A", new [] { "a", "S" } );
+g.Prod("B", new [] { "S", "b", "S" } );
+g.Prod("B", new [] { "A" } );
+g.Prod("B", new [] { "b", "b" } );
+
+Console.WriteLine($"\n  ---------------- SAB: start = {g.StartSymbol}\n");
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
+
+Console.WriteLine($"\n - Eliminating unit productions");
+g = g.EliminateUnitProductions();
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
+*/
 
 
 
