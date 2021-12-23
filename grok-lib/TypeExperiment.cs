@@ -176,4 +176,123 @@ public class Grokker
     {
         return new LalrParser(grammar);
     }
+
+    void Test(HumonGrammar g, string src)
+    {
+        var parser = MakeLalrParser(typeof(HumonGrammar));
+
+        Console.WriteLine("  - Terminal defs:");
+        foreach (var c in parser.Terminals)
+        {
+            Console.WriteLine(c.Name);
+        }
+
+        Console.WriteLine("\n  - Nonterminal defs:");
+        foreach (var c in parser.Nonterminals)
+        {
+            Console.WriteLine(c.Name);
+        }
+
+        Console.WriteLine($"\n  - BNF: \n{parser.GenerateBnf()}");
+
+        Console.WriteLine($"\n  - Src:\n{src}");
+
+        Console.WriteLine($"\n  - Tokens:");
+        foreach (var token in parser.GenerateTokens(src))
+        {
+            Console.WriteLine($"{token.GetType().Name}: {token.Value}");
+        }
+    }
+}
+
+public class HumonGrammar
+{
+    [Lex(@"\s|,")]                      public class Whitespace : Terminal { }
+    [Lex(@"\/\*(.|\n)*?\*\/")]          public class CStyleComment : Terminal { }
+    [Lex(@"\/\/.*?$")]                  public class CppStyleComment : Terminal { }
+    [Lex(@":")]                         public class KeyValueSeparator : Terminal { }
+    [Lex(@"\[")]                        public class ListBegin : Terminal { }
+    [Lex(@"]")]                         public class ListEnd : Terminal { }
+    [Lex(@"\{")]                        public class DictBegin : Terminal { }
+    [Lex(@"}")]                         public class DictEnd : Terminal { }
+    [Lex(@"@")]                         public class AnnotationMark : Terminal { }
+    [Lex(@"'(.|\n)*?'")]                public class Word_squote : Terminal { }
+    [Lex(@"""(.|\n)*?""")]              public class Word_dquote : Terminal { }
+    [Lex(@"`(.|\n)*?`")]                public class Word_backquote : Terminal { }
+    [Lex(@"(\^(.|\n)*?\^)(.|\n)*\1")]   public class Word_heredoc : Terminal { }
+    [Lex(@"[^\s\{\}\[\]\:,@]+?(?=(\/\*)|(\/\/)|[\s\{\}\[\]\:,@]|$)")]
+                                        public class Word : Terminal { }
+
+    public class Trove : Nonterminal
+    {
+        public Trove(Node node) { }
+    }
+
+    public class Node : Nonterminal
+    {
+        public Node(List list) { }
+        public Node(List list, Annotation annotation) { }
+        public Node(Dict dict) { }
+        public Node(Dict dict, Annotation annotation) { }
+        public Node(Value value) { }
+        public Node(Value value, Annotation annotation) { }
+    }
+
+    public class List : Nonterminal
+    {
+        public List(ListBegin listBegin, Sequence sequence, ListEnd listEnd) { }
+        public List(ListBegin listBegin, Annotation annotation, Sequence sequence, ListEnd listEnd) { }
+    }
+
+    public class Dict : Nonterminal
+    {
+        public Dict(DictBegin dictBegin, KeyNodeSequence keyNodeSequence, DictEnd dictEnd) { }
+        public Dict(DictBegin dictBegin, Annotation annotation, KeyNodeSequence keyNodeSequence, DictEnd dictEnd) { }
+    }
+
+    public class Value : Nonterminal
+    {
+        public Value(Word_squote word_sqote) { }
+        public Value(Word_dquote word_dquote) { }
+        public Value(Word_backquote word_backquote) { }
+        public Value(Word_heredoc word_heredoc) { }
+        public Value(Word word) { }
+    }
+
+    public class Sequence : Nonterminal
+    {
+        public Sequence(Sequence sequence, Node node) { }
+        public Sequence() { }
+    }
+
+    public class KeyNodeSequence : Nonterminal
+    {
+        public KeyNodeSequence(KeyNodeSequence keyNodeSequence, Node node) { }
+        public KeyNodeSequence() { }
+    }
+
+    public class KeyNode : Nonterminal
+    {
+        public KeyNode(Value value, KeyValueSeparator keyValueSeparator, Node node) { }
+        public KeyNode(Value value, Annotation annotation, KeyValueSeparator keyValueSeparator, Node node) { }
+        public KeyNode(Value value, KeyValueSeparator keyValueSeparator, Annotation annotation, Node node) { }
+        public KeyNode(Value value, Annotation annotation0, KeyValueSeparator keyValueSeparator, Annotation annotation1, Node node) { }
+    }
+
+    public class Annotation : Nonterminal
+    {
+        public Annotation(AnnotationMark annotationMark, DictBegin dictBegin, KeyValueSequence keyValueSequence, DictEnd dictEnd) { }
+        public Annotation(AnnotationMark annotationMark, KeyValue keyValue) { }
+    }
+
+    public class KeyValueSequence : Nonterminal
+    {
+        public KeyValueSequence(KeyValueSequence keyValueSequence, KeyValue keyValue) { }
+        public KeyValueSequence() { }
+    }
+
+    public class KeyValue : Nonterminal
+    {
+        public KeyValue(Value value0, KeyValueSeparator keyValueSeparator, Value value1) { }
+    }
 }

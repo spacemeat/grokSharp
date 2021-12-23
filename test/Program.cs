@@ -23,6 +23,8 @@ var g = new Grammar(l);
 /**/
 
 g.Prod("trove",             new [] { "node" }, true );
+g.Prod("trove",             new [] { "annotation", "node" }, true );
+g.Prod("trove",             new [] { string.Empty }, true );
 g.Prod("node",              new [] { "list" } );
 g.Prod("node",              new [] { "list", "annotation" } );
 g.Prod("node",              new [] { "dict" } );
@@ -71,6 +73,14 @@ Console.WriteLine($"\n - Eliminating unit productions");
 g = g.EliminateUnitProductions();
 Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
 
+Console.WriteLine($"\n - Isolating mixed terminal productions");
+g = g.IsolateTerminals();
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
+
+Console.WriteLine($"\n - Reducing rules to pairs");
+g = g.IsolateTerminals();
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
+
 l = new RegexLexer();
 l.Lex("a", "a");
 l.Lex("c", "c");
@@ -111,7 +121,7 @@ g.Prod("B", new [] { "S", "b", "S" } );
 g.Prod("B", new [] { "A" } );
 g.Prod("B", new [] { "b", "b" } );
 
-Console.WriteLine($"\n  ---------------- SAB: start = {g.StartSymbol}\n");
+Console.WriteLine($"\n  ---------------- SAB (https://www.geeksforgeeks.org/converting-context-free-grammar-chomsky-normal-form/): start = {g.StartSymbol}\n");
 Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
 
 Console.WriteLine($"\n - AbstractifyStartSymbol");
@@ -126,162 +136,112 @@ Console.WriteLine($"\n - Eliminating unit productions");
 g = g.EliminateUnitProductions();
 Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
 
-Console.WriteLine($"\n - Bottom-up reduction");
-g = g.ReduceBottomUp();
+Console.WriteLine($"\n - Isolating mixed terminal productions");
+g = g.IsolateTerminals();
 Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
 
-Console.WriteLine($"\n - Top-down reduction");
-g = g.ReduceTopDown();
+Console.WriteLine($"\n - Reducing rules to pairs (broken)");
+g = g.ReduceRulesToPairs();
 Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
 
 
-
-/*
 l = new RegexLexer();
 l.Lex("a", "a");
 l.Lex("b", "b");
 
 g = new Grammar(l);
-g.Prod("S_0", new [] { "A", "S", "B" }, true );
-g.Prod("S_0", new [] { "S", "B" }, true );
-g.Prod("S_0", new [] { "A", "S" }, true );
-g.Prod("S_0", new [] { "R" }, true );
-g.Prod("R", new [] { "S" } );
-g.Prod("S", new [] { "A", "S", "B" } );
-g.Prod("S", new [] { "S", "B" } );
-g.Prod("S", new [] { "A", "S" } );
-g.Prod("S", new [] { "R" } );
-g.Prod("A", new [] { "a", "A", "S" } );
-g.Prod("A", new [] { "a" } );
-g.Prod("A", new [] { "a", "S" } );
-g.Prod("B", new [] { "S", "b", "S" } );
-g.Prod("B", new [] { "A" } );
-g.Prod("B", new [] { "b", "b" } );
+g.Prod("S", new [] { "a" }, true );
+g.Prod("S", new [] { "a", "A" }, true );
+g.Prod("S", new [] { "B" }, true );
+g.Prod("A", new [] { "a", "B", "B" } );
+g.Prod("A", new [] { string.Empty } );
+g.Prod("B", new [] { "A", "a" } );
+g.Prod("B", new [] { "b" } );
 
-Console.WriteLine($"\n  ---------------- SAB: start = {g.StartSymbol}\n");
+Console.WriteLine($"\n  ---------------- SAB2: start = {g.StartSymbol}\n");
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
+
+Console.WriteLine($"\n - AbstractifyStartSymbol");
+g = g.AbstractifyStartSymbol();
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
+
+Console.WriteLine($"\n - Eliminating null productions");
+g = g.EliminateNullProductions();
 Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
 
 Console.WriteLine($"\n - Eliminating unit productions");
 g = g.EliminateUnitProductions();
 Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
-*/
+
+Console.WriteLine($"\n - Reducing");
+g = g.EliminateUselessProductions();
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
+
+Console.WriteLine($"\n - Isolating mixed terminal productions");
+g = g.IsolateTerminals();
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
+
+Console.WriteLine($"\n - Reducing rules to pairs");
+g = g.ReduceRulesToPairs();
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
 
 
+l = new RegexLexer();
+l.Lex("a", "a");
+l.Lex("b", "b");
 
-/*
-var parser = g.MakeLalrParser(typeof(HumonGrammar));
+g = new Grammar(l);
+g.Prod("S", new [] { "A", "S", "A" }, true );
+g.Prod("S", new [] { "a", "B" }, true );
+g.Prod("A", new [] { "B" } );
+g.Prod("A", new [] { "S" } );
+g.Prod("B", new [] { "b" } );
+g.Prod("B", new [] { string.Empty } );
 
-Console.WriteLine("  - Terminal defs:");
-foreach (var c in parser.Terminals)
-{
-    Console.WriteLine(c.Name);
-}
+Console.WriteLine($"\n  ---------------- SABBA SASS (https://courses.engr.illinois.edu/cs373/sp2009/lectures/lect_12.pdf): start = {g.StartSymbol}\n");
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
 
-Console.WriteLine("\n  - Nonterminal defs:");
-foreach (var c in parser.Nonterminals)
-{
-    Console.WriteLine(c.Name);
-}
+Console.WriteLine($"\n - AbstractifyStartSymbol");
+g = g.AbstractifyStartSymbol();
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
 
-Console.WriteLine($"\n  - BNF: \n{parser.GenerateBnf()}");
+Console.WriteLine($"\n - Eliminating null productions");
+g = g.EliminateNullProductions();
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
 
-Console.WriteLine($"\n  - Src:\n{src}");
+Console.WriteLine($"\n - Eliminating unit productions");
+g = g.EliminateUnitProductions();
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
 
-Console.WriteLine($"\n  - Tokens:");
-foreach (var token in parser.GenerateTokens(src))
-{
-    Console.WriteLine($"{token.GetType().Name}: {token.Value}");
-}
+Console.WriteLine($"\n - Reducing");
+g = g.EliminateUselessProductions();
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
 
-public class HumonGrammar
-{
-    [Lex(@"\s|,")]                      public class Whitespace : Terminal { }
-    [Lex(@"\/\*(.|\n)*?\*\/")]          public class CStyleComment : Terminal { }
-    [Lex(@"\/\/.*?$")]                  public class CppStyleComment : Terminal { }
-    [Lex(@":")]                         public class KeyValueSeparator : Terminal { }
-    [Lex(@"\[")]                        public class ListBegin : Terminal { }
-    [Lex(@"]")]                         public class ListEnd : Terminal { }
-    [Lex(@"\{")]                        public class DictBegin : Terminal { }
-    [Lex(@"}")]                         public class DictEnd : Terminal { }
-    [Lex(@"@")]                         public class AnnotationMark : Terminal { }
-    [Lex(@"'(.|\n)*?'")]                public class Word_squote : Terminal { }
-    [Lex(@"""(.|\n)*?""")]              public class Word_dquote : Terminal { }
-    [Lex(@"`(.|\n)*?`")]                public class Word_backquote : Terminal { }
-    [Lex(@"(\^(.|\n)*?\^)(.|\n)*\1")]   public class Word_heredoc : Terminal { }
-    [Lex(@"[^\s\{\}\[\]\:,@]+?(?=(\/\*)|(\/\/)|[\s\{\}\[\]\:,@]|$)")]
-                                        public class Word : Terminal { }
+Console.WriteLine($"\n - Isolating mixed terminal productions");
+g = g.IsolateTerminals();
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
 
-    public class Trove : Nonterminal
-    {
-        public Trove(Node node) { }
-    }
+Console.WriteLine($"\n - Reducing rules to pairs");
+g = g.ReduceRulesToPairs();
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
 
-    public class Node : Nonterminal
-    {
-        public Node(List list) { }
-        public Node(List list, Annotation annotation) { }
-        public Node(Dict dict) { }
-        public Node(Dict dict, Annotation annotation) { }
-        public Node(Value value) { }
-        public Node(Value value, Annotation annotation) { }
-    }
 
-    public class List : Nonterminal
-    {
-        public List(ListBegin listBegin, Sequence sequence, ListEnd listEnd) { }
-        public List(ListBegin listBegin, Annotation annotation, Sequence sequence, ListEnd listEnd) { }
-    }
+l = new RegexLexer();
+l.Lex("a", "a");
+l.Lex("b", "b");
 
-    public class Dict : Nonterminal
-    {
-        public Dict(DictBegin dictBegin, KeyNodeSequence keyNodeSequence, DictEnd dictEnd) { }
-        public Dict(DictBegin dictBegin, Annotation annotation, KeyNodeSequence keyNodeSequence, DictEnd dictEnd) { }
-    }
+g = new Grammar(l);
+g.Prod("S", new [] { "S", "X" }, true );
+g.Prod("S", new [] { "S", "S", "b" }, true );
+g.Prod("S", new [] { "X", "S" }, true );
+g.Prod("S", new [] { "a" }, true );
+g.Prod("X", new [] { "X", "b" } );
+g.Prod("X", new [] { "S", "a" } );
+g.Prod("X", new [] { "b" } );
 
-    public class Value : Nonterminal
-    {
-        public Value(Word_squote word_sqote) { }
-        public Value(Word_dquote word_dquote) { }
-        public Value(Word_backquote word_backquote) { }
-        public Value(Word_heredoc word_heredoc) { }
-        public Value(Word word) { }
-    }
+Console.WriteLine($"\n  ---------------- SSX tricky (https://studylib.net/doc/18262360/eliminating-left-recursion--three-steps-recall--a-cfg-is-...): start = {g.StartSymbol}\n");
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
 
-    public class Sequence : Nonterminal
-    {
-        public Sequence(Sequence sequence, Node node) { }
-        public Sequence() { }
-    }
-
-    public class KeyNodeSequence : Nonterminal
-    {
-        public KeyNodeSequence(KeyNodeSequence keyNodeSequence, Node node) { }
-        public KeyNodeSequence() { }
-    }
-
-    public class KeyNode : Nonterminal
-    {
-        public KeyNode(Value value, KeyValueSeparator keyValueSeparator, Node node) { }
-        public KeyNode(Value value, Annotation annotation, KeyValueSeparator keyValueSeparator, Node node) { }
-        public KeyNode(Value value, KeyValueSeparator keyValueSeparator, Annotation annotation, Node node) { }
-        public KeyNode(Value value, Annotation annotation, KeyValueSeparator keyValueSeparator, Annotation annotation, Node node) { }
-    }
-
-    public class Annotation : Nonterminal
-    {
-        public Annotation(AnnotationMark annotationMark, DictBegin dictBegin, KeyValueSequence keyValueSequence, DictEnd dictEnd) { }
-        public Annotation(AnnotationMark annotationMark, KeyValue keyValue) { }
-    }
-
-    public class KeyValueSequence : Nonterminal
-    {
-        public KeyValueSequence(KeyValueSequence keyValueSequence, keyValue) { }
-        public KeyValueSequence() { }
-    }
-
-    public class KeyValue : Nonterminal
-    {
-        public KeyValue(Value value0, KeyValueSeparator keyValueSeparator, Value value1) { }
-    }
-}
-*/
+Console.WriteLine($"\n - Eliminating left recursion");
+g = g.EliminateLeftRecursion();
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
