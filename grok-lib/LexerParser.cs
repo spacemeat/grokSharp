@@ -415,16 +415,16 @@ public class Grammar
         this.productions.cavepersonDebugging = cavepersonDebugging;
     }
 
-    public Grammar(Lexer lexer, Grammar template, bool cavepersonDebugging = false)
+    public Grammar(Lexer lexer, Grammar template)
     {
         this.lexer = lexer;
         this.productions = template.productions.Clone();
         this.productions.cavepersonDebugging = cavepersonDebugging;
         this.startSymbol = template.startSymbol;
-        this.cavepersonDebugging = cavepersonDebugging;
+        this.cavepersonDebugging = template.cavepersonDebugging;
     }
 
-    public Grammar(Grammar template, bool cavepersonDebugging = false)
+    public Grammar(Grammar template)
     {
         this.lexer = template.lexer; // TODO: Clone lexer in ctrs
         this.productions = template.productions.Clone();
@@ -432,7 +432,7 @@ public class Grammar
         this.startSymbol = template.startSymbol;
         this.usedNonterminalNames.UnionWith(this.Terminals);
         this.usedNonterminalNames.UnionWith(this.Nonterminals);
-        this.cavepersonDebugging = cavepersonDebugging;
+        this.cavepersonDebugging = template.cavepersonDebugging;
     }
 
     private void Report(string s)
@@ -1003,6 +1003,167 @@ public class Grammar
             // including them in allTerminals. NEED TO CHECK and make sure this
             // is correct behavior.
             g.EliminateImmediateLeftRecursion(ai);
+        }
+
+        return g;
+    }
+
+    public Grammar LeftFactor()
+    {
+        Report($"Left-factor");
+
+        var g = new Grammar(this);
+
+        //  foreach production A -> x0 | x1 | x2 ... xn
+        //      Find each longest sequence of symbols [s0 s1 s2 ... sm0]0, [sm1]1, [sm2]2, .. [smp]p that
+        //      begin two or more RHSs of A, and mp is >= 1.
+        //      Make each []p a new nonterminal's prod, and replace all the sequences in A with the new NT
+
+        //  Question: Do we prefer to sub a sequence of two that matches three alts, or a sequence of
+        //  three that matches two alts and leaves the third unmatched?
+        //      A -> ABCDE | ABCFG | ABHIJ | KLM | NO
+        //  Should we replace AB:       + 1
+        //      A -> ABX | KLM | MO
+        //      X -> CDE | CFG | HIJ
+        //      =>
+        //      A -> ABX | KLM | MO
+        //      X -> CY | HIJ
+        //      Y -> DE | FG
+        //  or ABC:
+        //      A -> ABCX | ABHIJ | KLM | MO
+        //      X -> DE | FG
+        //      =>
+        //      A -> ABY | KLM | MO
+        //      X -> DE | FG
+        //      Y -> CX | HIJ
+        //  I don't think it matters.
+
+        var adds = new List<(string, List<string>)>();
+        var removals = new List<(string, int)>();
+
+        var tracking = new HashSet<string>(g.Nonterminals);
+
+        while (tracking.Count() > 0)
+        {
+            var allNonterminals = tracking.ToArray();
+            tracking.Clear();
+
+            bool lastProdHadChanges = false;
+            for (int i = 0; i < allNonterminals.Length; ++i)
+            {
+                // if the last thing we did made babies, we need to go over it again
+                if (lastProdHadChanges)
+                {
+                    lastProdHadChanges = false;
+                    i -= 1;
+                }
+
+                adds.Clear();
+                removals.Clear();
+                string ai = allNonterminals[i];
+                var aip = g.productions.ProductionOf(ai);
+
+                for (int r = 0; r < aip.rules.Count(); ++r)
+                {
+                    var ard = aip.rules[r].derivation;
+
+                    Report($"Reference: {ai} -> {string.Join(' ', ard)}");
+
+                    int bestNumberOfMatchesSoFar = 0;
+                    int lengthOfMatch = ard.Count();    // comparing against a maximum
+
+                    // count the number of common beginning symbols
+                    for (int s = r + 1; s < aip.rules.Count(); ++s)
+                    {
+                        var asd = aip.rules[s].derivation;
+
+                        Report($"Checkinag against: {ai} -> {string.Join(' ', asd)}");
+
+                        int numMatches = 0;
+                        for (int m = 0; m < Math.Min(ard.Count(), asd.Count()); ++m)
+                        {
+                            if (ard[m] == asd[m])
+                                { numMatches += 1; }
+                            else
+                                { break; }
+                        }
+
+                        Report($" - {numMatches} matches");
+
+                        if (numMatches > 0)
+                        {
+                            bestNumberOfMatchesSoFar += 1;
+                            // min - prefer shorter sequences that begin more productions
+                            // doesn't really matter, but this is easy
+                            lengthOfMatch = Math.Min(lengthOfMatch, numMatches);
+
+                            Report($" - New best length: {lengthOfMatch} matches");
+                        }
+                    }
+
+                    if (bestNumberOfMatchesSoFar > 0)
+                    {
+                        lastProdHadChanges = true;
+
+                        Report($"Abstracting sequence: {ai} -> {string.Join(' ', ard.Take(lengthOfMatch))}");
+
+                        var newNonterm = g.GetNewNonterminal(ai);
+
+                        // add new nonterm to tracking
+                        tracking.Add(newNonterm);
+
+                        removals.Add((ai, r));
+                        var newDer = ard.Take(lengthOfMatch).ToList();
+                        newDer.Add(newNonterm);
+                        adds.Add((ai, newDer));
+
+                        Report($" - Remove: {ai} -> {string.Join(' ', ard)}");
+                        Report($" - Add: {ai} -> {string.Join(' ', newDer)}");
+
+                        newDer = ard.Skip(lengthOfMatch).ToList();
+                        if (newDer.Count() == 0)
+                            { newDer.Add(string.Empty); }
+                        adds.Add((newNonterm, newDer));
+
+                        Report($" - Add: {newNonterm} -> {string.Join(' ', newDer)}");
+
+                        // replace the abstracted derivations
+                        for (int s = r + 1; s < aip.rules.Count(); ++s)
+                        {
+                            var asd = aip.rules[s].derivation;
+                            int numMatches = 0;
+                            for (int m = 0; m < Math.Min(lengthOfMatch, asd.Count()); ++m)
+                            {
+                                if (asd[m] == ard[m])
+                                    { numMatches += 1; }
+                            }
+                            if (numMatches == lengthOfMatch)
+                            {
+                                removals.Add((ai, s));
+                                newDer = asd.Skip(numMatches).ToList();
+                                if (newDer.Count() == 0)
+                                    { newDer.Add(string.Empty); }
+
+                                adds.Add((newNonterm, newDer));
+                                Report($" - Remove: {ai} -> {string.Join(' ', asd)}");
+                                Report($" - Add: {newNonterm} -> {string.Join(' ', newDer)}");
+                            }
+                        }
+
+                        // remove the bad'ns
+                        removals.Reverse();
+                        foreach (var (nonterm, idx) in removals)
+                        {
+                            g.productions.Remove(nonterm, idx);
+                        }
+                        // add the good'ns
+                        foreach (var (nonterm, deriv) in adds)
+                        {
+                            g.Prod(nonterm, deriv);
+                        }
+                    }
+                }
+            }
         }
 
         return g;

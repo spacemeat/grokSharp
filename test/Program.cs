@@ -239,3 +239,60 @@ Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
 
 g = g.EliminateLeftRecursion();
 Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
+
+
+Console.WriteLine($"\n  ---------------- ifthenelse (dragon book p 178):");
+
+l = new RegexLexer();
+l.Lex("i", "i");
+l.Lex("t", "t");
+l.Lex("e", "e");
+l.Lex("a", "a");
+l.Lex("b", "b");
+
+g = new Grammar(l, true);
+g.Prod("S", new [] { "i", "E", "t", "S" }, true );
+g.Prod("S", new [] { "i", "E", "t", "S", "e", "S" }, true );
+g.Prod("S", new [] { "a" }, true );
+g.Prod("E", new [] { "b" } );
+
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
+
+g = g.LeftFactor();
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
+
+Console.WriteLine($"\n  ---------------- LeftFactor 02 (https://www.gatevidyalay.com/left-factoring-examples-compiler-design/):");
+
+l = new RegexLexer();
+l.Lex("a", "a");
+l.Lex("b", "b");
+
+g = new Grammar(l, true);
+g.Prod("A", new [] { "a", "A", "B" }, true );
+g.Prod("A", new [] { "a", "B", "c" }, true );
+g.Prod("A", new [] { "a", "A", "c" }, true );
+
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
+
+g = g.LeftFactor();
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
+
+
+Console.WriteLine($"\n  ---------------- LeftFactor 06 (https://www.gatevidyalay.com/left-factoring-examples-compiler-design/):");
+
+l = new RegexLexer();
+l.Lex("a", "a");
+l.Lex("b", "b");
+
+g = new Grammar(l, true);
+g.Prod("S", new [] { "a", "A", "d" }, true );
+g.Prod("S", new [] { "a", "B" }, true );
+g.Prod("A", new [] { "a" } );
+g.Prod("A", new [] { "a", "b" } );
+g.Prod("B", new [] { "c", "c", "d" } );
+g.Prod("B", new [] { "d", "d", "c" } );
+
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
+
+g = g.LeftFactor();
+Console.WriteLine($"\n  - BNF: \n{g.GenerateBnf()}");
