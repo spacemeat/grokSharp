@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\grok-lib\grok-lib.csproj" />
+    <ProjectReference Include="..\grok\grok.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

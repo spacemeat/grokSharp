@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 using System.Collections.Specialized;
 using System.Diagnostics;
 
-﻿namespace grokSharp;
+﻿namespace grok;
 
 public class ProdRule
 {

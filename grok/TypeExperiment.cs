@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Reflection;
 
-﻿namespace grok_lib_typeexp;
+﻿namespace grok_typeexp;
 
 public static class EnumHelpers
 {
