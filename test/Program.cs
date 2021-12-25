@@ -20,7 +20,7 @@ l.Lex("word_backquote",     @"`(.|\n)*?`"               );
 l.Lex("word_heredoc",       @"(\^(.|\n)*?\^)(.|\n)*\1"  );
 l.Lex("word",               @"[^\s\{\}\[\]\:,@]+?(?=(\/\*)|(\/\/)|[\s\{\}\[\]\:,@]|$)");
 
-var g = new Grammar(l, true);
+var g = new Grammar(l, 1);
 /**/
 
 g.Prod("trove",             new [] { "node" }, true );
@@ -96,7 +96,7 @@ l.Lex("a", "a");
 l.Lex("c", "c");
 l.Lex("e", "e");
 
-g = new Grammar(l, true);
+g = new Grammar(l, 1);
 g.Prod("S", new [] { "A", "C" }, true );
 g.Prod("S", new [] { "B" }, true );
 g.Prod("A", new [] { "a" } );
@@ -122,7 +122,7 @@ l = new RegexLexer();
 l.Lex("a", "a");
 l.Lex("b", "b");
 
-g = new Grammar(l, true);
+g = new Grammar(l, 1);
 g.Prod("S", new [] { "A", "S", "B" }, true );
 g.Prod("A", new [] { "a", "A", "S" } );
 g.Prod("A", new [] { "a" } );
@@ -155,7 +155,7 @@ l = new RegexLexer();
 l.Lex("a", "a");
 l.Lex("b", "b");
 
-g = new Grammar(l, true);
+g = new Grammar(l, 1);
 g.Prod("S", new [] { "a" }, true );
 g.Prod("S", new [] { "a", "A" }, true );
 g.Prod("S", new [] { "B" }, true );
@@ -191,7 +191,7 @@ l = new RegexLexer();
 l.Lex("a", "a");
 l.Lex("b", "b");
 
-g = new Grammar(l, true);
+g = new Grammar(l, 1);
 g.Prod("S", new [] { "A", "S", "A" }, true );
 g.Prod("S", new [] { "a", "B" }, true );
 g.Prod("A", new [] { "B" } );
@@ -226,7 +226,7 @@ l = new RegexLexer();
 l.Lex("a", "a");
 l.Lex("b", "b");
 
-g = new Grammar(l, true);
+g = new Grammar(l, 1);
 g.Prod("S", new [] { "S", "X" }, true );
 g.Prod("S", new [] { "S", "S", "b" }, true );
 g.Prod("S", new [] { "X", "S" }, true );
@@ -250,7 +250,7 @@ l.Lex("e", "e");
 l.Lex("a", "a");
 l.Lex("b", "b");
 
-g = new Grammar(l, true);
+g = new Grammar(l, 1);
 g.Prod("S", new [] { "i", "E", "t", "S" }, true );
 g.Prod("S", new [] { "i", "E", "t", "S", "e", "S" }, true );
 g.Prod("S", new [] { "a" }, true );
@@ -267,7 +267,7 @@ l = new RegexLexer();
 l.Lex("a", "a");
 l.Lex("b", "b");
 
-g = new Grammar(l, true);
+g = new Grammar(l, 1);
 g.Prod("A", new [] { "a", "A", "B" }, true );
 g.Prod("A", new [] { "a", "B", "c" }, true );
 g.Prod("A", new [] { "a", "A", "c" }, true );
@@ -284,7 +284,7 @@ l = new RegexLexer();
 l.Lex("a", "a");
 l.Lex("b", "b");
 
-g = new Grammar(l, true);
+g = new Grammar(l, 1);
 g.Prod("S", new [] { "a", "A", "d" }, true );
 g.Prod("S", new [] { "a", "B" }, true );
 g.Prod("A", new [] { "a" } );
