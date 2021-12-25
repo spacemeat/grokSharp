@@ -4,163 +4,7 @@ using System.Text.RegularExpressions;
 using System.Collections.Specialized;
 using System.Diagnostics;
 
-﻿namespace grok_lib;
-
-public static class EnumHelpers
-{
-    public static IEnumerable < (T item, int idx) > WithIdxs<T>(this IEnumerable<T> obj)
-    {
-        return obj.Select((obj, idx) => (obj, idx));
-    }
-}
-
-public class OrderedStringDictionary<V> //where K: notnull
-{
-    List<(string key, V value)> entries = new List<(string key, V value)>();
-    Dictionary<string, List<int>> keys = new Dictionary<string, List<int>>();
-
-    public void Add(string key, V value)
-    {
-        int c = entries.Count;
-        entries.Add((key, value));
-
-        List<int>? vl;
-        if (keys.TryGetValue(key, out vl) == false)
-        {
-            vl = new List<int>();
-            keys.Add(key, vl);
-        }
-        vl.Add(c);
-    }
-
-    public IEnumerable<V> this[string key] =>
-        from idx in keys[key]
-        select entries[idx].value;
-
-    public IEnumerable<string> Keys => from kvp in keys select kvp.Key;
-
-    public bool TryGetValue(string key, out V[] values)
-    {
-        List<int>? idxs;
-        if (keys.TryGetValue(key, out idxs))
-            { values = (from idx in idxs select entries[idx].value).ToArray(); return true; }
-        values = new V[] {};
-        return false;
-    }
-
-    public IEnumerable<(string key, V value)> Entries => from e in entries select e;
-
-    /*
-    public IEnumerable<(string key, V[] value)> CollatedEntries =>
-        from (key, idxs) in keys
-        select (key, (from idx in idxs select entries[idx].value).ToArray());
-        */
-}
-
-public struct Token
-{
-    public string Terminal;
-    public int TerminalRuleIdx; // usually 0
-    public int Line;
-    public int Column;
-    public string Value;
-}
-
-public abstract class Lexer
-{
-    public virtual string [] Terminals => new string []{};
-
-    public IEnumerable<Token> GenerateTokens(string src)
-    {
-        return GenerateTokens_imp(src);
-    }
-
-    protected abstract IEnumerable<Token> GenerateTokens_imp(string src);
-}
-
-public class RegexLexer : Lexer
-{
-    OrderedStringDictionary<(string pattern, Regex regex, bool producesTokens)> lexRules
-        = new OrderedStringDictionary<(string pattern, Regex regex, bool producesTokens)>();
-
-    public void Lex(string name, string pattern, bool producesTokens = true)
-    {
-        lexRules.Add(name, (pattern, new Regex(pattern, RegexOptions.Compiled), producesTokens));
-    }
-
-    public override string [] Terminals => lexRules.Keys.ToArray();
-
-    protected override IEnumerable<Token> GenerateTokens_imp(string src)
-    {
-        // Here we tokenize src into lexemes.
-        // I just feel cool using the word 'lexeme.'
-        int backCur = 0;
-        int line = 1;
-        int column = 1;
-
-        while(backCur < src.Length)
-        {
-            string bestMatchTerminal = string.Empty;
-            int bestMatchTerminalRuleIdx = -1;
-            int bestMatchLen = 0;
-            string bestMatchStr = string.Empty;
-            bool bestMatchProducesToken = true;
-
-            foreach (var (rule, idx) in lexRules.Entries.WithIdxs())
-            {
-                // rules is (string, (string pattern, Regex regex))
-                var terminal = rule.key;
-                bestMatchTerminalRuleIdx = -1;
-                var re = rule.value.regex;
-                if (re == null)
-                    { continue; }
-                MatchCollection matches = re.Matches(src, backCur);
-                if (matches == null)
-                    { continue; }
-                foreach (Match match in matches)
-                {
-                    var len = match.Groups[0].Length;
-                    if (len > bestMatchLen && match.Groups[0].Index == backCur)
-                    {
-                        bestMatchTerminal = terminal;
-                        bestMatchTerminalRuleIdx = idx;
-                        bestMatchLen = len;
-                        bestMatchStr = match.Groups[0].Value;
-                        bestMatchProducesToken = rule.value.producesTokens;
-                    }
-                }
-            }
-
-            if (bestMatchTerminal == string.Empty)
-                { throw new Exception($"({line}:{column}): syntax error: No matching lexemes"); }
-
-            backCur += bestMatchLen;
-
-            if (bestMatchProducesToken)
-            {
-                yield return new Token {
-                    Terminal = bestMatchTerminal,
-                    TerminalRuleIdx = bestMatchTerminalRuleIdx,
-                    Line = line,
-                    Column = column,
-                    Value = bestMatchStr };
-            }
-            for (int i = 0; i < bestMatchStr.Length; ++i)
-            {
-                // TODO: \r, CRLF, al that thankless bs
-                if (bestMatchStr[i] == '\n')
-                {
-                    line += 1;
-                    column = 0;
-                }
-                column += 1;
-            }
-
-            if (backCur > src.Length)
-                { throw new Exception("Fatality!"); }
-        }
-    }
-}
+﻿namespace grokSharp;
 
 public class ProdRule
 {
@@ -404,7 +248,7 @@ public class ProductionSet
     }
 }
 
-public class Grammar
+public class ContextFreeGrammar
 {
     Lexer lexer;
     ProductionSet productions = new ProductionSet();
@@ -412,14 +256,14 @@ public class Grammar
     HashSet<string> usedNonterminalNames = new HashSet<string>();
     int cavepersonDebugging = 0;
 
-    public Grammar(Lexer lexer, int cavepersonDebugging = 0)
+    public ContextFreeGrammar(Lexer lexer, int cavepersonDebugging = 0)
     {
         this.lexer = lexer;
         this.cavepersonDebugging = cavepersonDebugging;
         this.productions.cavepersonDebugging = cavepersonDebugging;
     }
 
-    public Grammar(Lexer lexer, Grammar template)
+    public ContextFreeGrammar(Lexer lexer, ContextFreeGrammar template)
     {
         this.lexer = lexer;
         this.productions = template.productions.Clone();
@@ -427,7 +271,7 @@ public class Grammar
         this.cavepersonDebugging = template.cavepersonDebugging;
     }
 
-    public Grammar(Grammar template)
+    public ContextFreeGrammar(ContextFreeGrammar template)
     {
         this.lexer = template.lexer; // TODO: Clone lexer in ctrs
         this.productions = template.productions.Clone();
@@ -504,11 +348,11 @@ public class Grammar
         return (numTerms, numNonterms);
     }
 
-    public Grammar ReduceBottomUp()
+    public ContextFreeGrammar ReduceBottomUp()
     {
         Report("Reducing useless productions: bottom-up", 1);
 
-        Grammar g = new Grammar(this);
+        ContextFreeGrammar g = new ContextFreeGrammar(this);
         g.productions = productions.Clone();
 
         HashSet<string> searchSymbols = new HashSet<string>(g.Terminals);
@@ -546,11 +390,11 @@ public class Grammar
         return g;
     }
 
-    public Grammar ReduceTopDown()
+    public ContextFreeGrammar ReduceTopDown()
     {
         Report("Reducing useless productions: top-down", 1);
 
-        Grammar g = new Grammar(lexer, cavepersonDebugging);
+        ContextFreeGrammar g = new ContextFreeGrammar(lexer, cavepersonDebugging);
 
         HashSet<string> W = new HashSet<string>();
         HashSet<string> wToAdd = new HashSet<string>();
@@ -584,7 +428,7 @@ public class Grammar
         return g;
     }
 
-    public Grammar EliminateUselessProductions()
+    public ContextFreeGrammar EliminateUselessProductions()
     {
         Report("Eliminating useless productions", 1);
 
@@ -592,11 +436,11 @@ public class Grammar
               .ReduceTopDown();
     }
 
-    public Grammar EliminateUnitProductions()
+    public ContextFreeGrammar EliminateUnitProductions()
     {
         Report("Eliminating unit productions", 1);
 
-        Grammar g = new Grammar(this);
+        ContextFreeGrammar g = new ContextFreeGrammar(this);
 
         // find all unit pairs
         var unitRules = g.productions.UnitProductions;
@@ -635,11 +479,11 @@ public class Grammar
         return g;
     }
 
-    public Grammar EliminateNullProductions()
+    public ContextFreeGrammar EliminateNullProductions()
     {
         Report("Eliminating null productions", 1);
 
-        Grammar g = new Grammar(this);
+        ContextFreeGrammar g = new ContextFreeGrammar(this);
 
         var nullProds = g.productions.NullProductions.GetEnumerator();
         // This search is started over every iteration, just taking the first null prod each time.
@@ -706,13 +550,13 @@ public class Grammar
         return g;
     }
 
-    public Grammar AbstractifyStartSymbol()
+    public ContextFreeGrammar AbstractifyStartSymbol()
     {
         Report("Abstracting start symbol", 1);
 
         if (productions.ProductionsReferencing(startSymbol).Count() > 0)
         {
-            var g = new Grammar(this);
+            var g = new ContextFreeGrammar(this);
             var newStartSymbol = g.GetNewNonterminal(startSymbol);
             Report($"Abstracting start symbol {newStartSymbol} -> {startSymbol}", 2);
             g.Prod(newStartSymbol, new [] {startSymbol}, true);
@@ -725,11 +569,11 @@ public class Grammar
         }
     }
 
-    public Grammar IsolateTerminals()
+    public ContextFreeGrammar IsolateTerminals()
     {
         Report("Isolating mixed term/nonterm productions", 1);
 
-        var g = new Grammar(this);
+        var g = new ContextFreeGrammar(this);
 
         // For each rule A->a (a is terminal), record {a:A}. Maps a unitary terminal
         // production's terminal to the nonterminal that owns it.
@@ -816,11 +660,11 @@ public class Grammar
         return g;
     }
 
-    public Grammar ReduceRulesToPairs()
+    public ContextFreeGrammar ReduceRulesToPairs()
     {
         Report("Reducting productions with > 2 symbols", 1);
 
-        var g = new Grammar(this);
+        var g = new ContextFreeGrammar(this);
 
         var removals = new List<(string, int)>();
         var adds = new List<(string, List<string>)>();
@@ -871,7 +715,7 @@ public class Grammar
         return g;
     }
 
-    public Grammar ToChomskyNormalForm()
+    public ContextFreeGrammar ToChomskyNormalForm()
     {
         Report("Transforming to CNF", 1);
 
@@ -883,7 +727,7 @@ public class Grammar
               .ReduceRulesToPairs();
     }
 
-    public Grammar EliminateCycles()
+    public ContextFreeGrammar EliminateCycles()
     {
         // currently my needs are met by EliminateUnitProductions
         return this;
@@ -953,11 +797,11 @@ public class Grammar
         }
     }
 
-    public Grammar EliminateLeftRecursion()
+    public ContextFreeGrammar EliminateLeftRecursion()
     {
         Report($"Eliminating left-recursion", 1);
 
-        var g = new Grammar(this);
+        var g = new ContextFreeGrammar(this);
 
         var adds = new List<(string, List<string>)>();
         var removals = new List<(string, int)>();
@@ -1010,11 +854,11 @@ public class Grammar
         return g;
     }
 
-    public Grammar LeftFactor()
+    public ContextFreeGrammar LeftFactor()
     {
         Report($"Left-factor", 1);
 
-        var g = new Grammar(this);
+        var g = new ContextFreeGrammar(this);
 
         //  foreach production A -> x0 | x1 | x2 ... xn
         //      Find each longest sequence of symbols [s0 s1 s2 ... sm0]0, [sm1]1, [sm2]2, .. [smp]p that
