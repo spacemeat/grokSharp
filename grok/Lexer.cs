@@ -60,7 +60,7 @@ public struct Token
 
 public abstract class Lexer
 {
-    public virtual string [] Terminals => new string []{};
+    public virtual string [] Terminals { get; } = new string [] {};
 
     public IEnumerable<Token> GenerateTokens(string src)
     {
@@ -80,6 +80,7 @@ public class RegexLexer : Lexer
         lexRules.Add(name, (pattern, new Regex(pattern, RegexOptions.Compiled), producesTokens));
     }
 
+    // rules should have order preserved
     public override string [] Terminals => lexRules.Keys.ToArray();
 
     protected override IEnumerable<Token> GenerateTokens_imp(string src)

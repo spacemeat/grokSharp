@@ -27,6 +27,11 @@ public class ProdRule
     {
         hash = string.Join(' ', derivation).GetHashCode();
     }
+
+    public override string ToString()
+    {
+        return $"{string.Join(' ', derivation)}";
+    }
 }
 
 public class Production
@@ -57,6 +62,19 @@ public class Production
         p.nonterminal = nonterminal;
         p.rules = new List<ProdRule>(rules);
         return p;
+    }
+
+    public override string ToString()
+    {
+        var productions = string.Join(" | ",
+            from r in rules
+            select r.ToString());
+        return $"{nonterminal} -> {productions}";
+    }
+
+    public string ToString(int ruleIdx)
+    {
+        return $"{nonterminal} -> {rules[ruleIdx]}";
     }
 }
 
@@ -211,14 +229,11 @@ public class ProductionSet
         }
     }
 
-    public string GenerateBnf(string startSymbol = "")
+    public override string ToString()
     {
         var sb = new StringBuilder();
 
         int maxNonterminalNameLen = (from t in Nonterminals select t.Length).Max();
-
-        if (startSymbol != string.Empty)
-            { sb.Append($"Start symbol: {startSymbol}\n\n"); }
 
         foreach (var prod in productions)
         {
@@ -250,22 +265,22 @@ public class ProductionSet
 
 public class ContextFreeGrammar
 {
-    Lexer lexer;
+    HashSet<string> terminals = new HashSet<string>();
     ProductionSet productions = new ProductionSet();
     string startSymbol = string.Empty;
     HashSet<string> usedNonterminalNames = new HashSet<string>();
     int cavepersonDebugging = 0;
 
-    public ContextFreeGrammar(Lexer lexer, int cavepersonDebugging = 0)
+    public ContextFreeGrammar(IEnumerable<string> terminals, int cavepersonDebugging = 0)
     {
-        this.lexer = lexer;
+        this.terminals = new HashSet<string>(terminals);
         this.cavepersonDebugging = cavepersonDebugging;
         this.productions.cavepersonDebugging = cavepersonDebugging;
     }
 
-    public ContextFreeGrammar(Lexer lexer, ContextFreeGrammar template)
+    public ContextFreeGrammar(IEnumerable<string> terminals, ContextFreeGrammar template)
     {
-        this.lexer = lexer;
+        this.terminals = new HashSet<string>(terminals);
         this.productions = template.productions.Clone();
         this.startSymbol = template.startSymbol;
         this.cavepersonDebugging = template.cavepersonDebugging;
@@ -273,7 +288,7 @@ public class ContextFreeGrammar
 
     public ContextFreeGrammar(ContextFreeGrammar template)
     {
-        this.lexer = template.lexer; // TODO: Clone lexer in ctrs
+        this.terminals = new HashSet<string>(template.terminals);
         this.productions = template.productions.Clone();
         this.startSymbol = template.startSymbol;
         this.usedNonterminalNames.UnionWith(this.Terminals);
@@ -300,11 +315,11 @@ public class ContextFreeGrammar
 
     public string StartSymbol => startSymbol;
 
-    public IEnumerable<string> Terminals => lexer.Terminals;
+    public HashSet<string> Terminals => terminals;
 
     public IEnumerable<string> Nonterminals => productions.Nonterminals;
 
-    public string GenerateBnf() => productions.GenerateBnf(startSymbol);
+    public override string ToString() => $"Start: {startSymbol}\n{productions}";
 
     public string GetNewNonterminal(string baseName = "")
     {
@@ -332,7 +347,7 @@ public class ContextFreeGrammar
         return new string[] {};
     }
 
-    public (int numTerms, int numNonterms) CountDerivationSymbols(HashSet<string> terminals, List<string> derivation)
+    public (int numTerms, int numNonterms) CountDerivationSymbols(List<string> derivation)
     {
         int numTerms = 0;
         int numNonterms = 0;
@@ -394,7 +409,7 @@ public class ContextFreeGrammar
     {
         Report("Reducing useless productions: top-down", 1);
 
-        ContextFreeGrammar g = new ContextFreeGrammar(lexer, cavepersonDebugging);
+        ContextFreeGrammar g = new ContextFreeGrammar(terminals, cavepersonDebugging);
 
         HashSet<string> W = new HashSet<string>();
         HashSet<string> wToAdd = new HashSet<string>();
@@ -436,7 +451,7 @@ public class ContextFreeGrammar
               .ReduceTopDown();
     }
 
-    public ContextFreeGrammar EliminateUnitProductions()
+    public ContextFreeGrammar EliminateUnitProductions_old()
     {
         Report("Eliminating unit productions", 1);
 
@@ -474,6 +489,50 @@ public class ContextFreeGrammar
         foreach (var (nonterm, ruleIdx, prodRule) in unitRulesArr)
         {
             g.productions.Remove(nonterm, ruleIdx);
+        }
+
+        return g;
+    }
+
+    public ContextFreeGrammar EliminateUnitProductions()
+    {
+        Report("Eliminating unit productions", 1);
+
+        ContextFreeGrammar g = new ContextFreeGrammar(this);
+
+        // find all unit pairs
+        var unitRules = g.productions.UnitProductions.ToList();
+
+        while (unitRules.Count() > 0)
+        {
+            var addedProds = new List<(string nonterminal, string [] derivation)>();
+
+            // add all nonunit productions as appropriate
+            foreach (var (nonterm, ruleIdx, prodRule) in unitRules)
+            {
+                string unitProd = prodRule.derivation[0];
+                if (unitProd == nonterm)
+                    { continue; }       // Do not copy my own rules to myself. I have them already.
+
+                Report($"Found unit production: {nonterm}:{ruleIdx} -> {unitProd}", 2);
+
+                foreach (var (nontermRep, ruleIdxRep, prodRuleRep) in g.productions.ProductionsOf(unitProd))
+                {
+                    addedProds.Add((nonterm, prodRuleRep.derivation.ToArray()));
+                }
+            }
+
+            foreach (var (nonterm, deriv) in addedProds)
+                { g.Prod(nonterm, deriv); }
+
+            unitRules.Reverse();
+
+            foreach (var (nonterm, ruleIdx, prodRule) in unitRules)
+            {
+                g.productions.Remove(nonterm, ruleIdx);
+            }
+
+            unitRules = g.productions.UnitProductions.ToList();
         }
 
         return g;
@@ -579,9 +638,6 @@ public class ContextFreeGrammar
         // production's terminal to the nonterminal that owns it.
         var terminalsToNonterminals = new Dictionary<string, string>();
 
-        // TODO: I'd like lexer to have a Contains() method instead of creating this hashset.
-        var terms = new HashSet<string>(g.lexer.Terminals);
-
         // gather up the unitary terminal productions we already have
         /*
         foreach (var (nonterm, idx, prodRule) in
@@ -599,7 +655,7 @@ public class ContextFreeGrammar
                 { continue; }
             var terminal = prodRule.derivation[0];
             if (prodRule.derivation.Count() == 1
-             && terms.Contains(terminal)
+             && terminals.Contains(terminal)
              && terminalsToNonterminals.ContainsKey(terminal) == false)
                 { terminalsToNonterminals.Add(terminal, nonterm); }
         }
@@ -609,7 +665,7 @@ public class ContextFreeGrammar
 
         foreach (var (nonterm, idx, prodRule) in g.productions.Productions)
         {
-            var (numTerms, numNonterms) = g.CountDerivationSymbols(terms, prodRule.derivation);
+            var (numTerms, numNonterms) = g.CountDerivationSymbols(prodRule.derivation);
             if (numTerms > 0)
             {
                 if (numTerms == 1 && numNonterms == 0)
@@ -621,7 +677,7 @@ public class ContextFreeGrammar
                 var newDerivation = new List<string>();
                 foreach (var s in prodRule.derivation)
                 {
-                    if (terms.Contains(s))
+                    if (terminals.Contains(s))
                     {
                         if (terminalsToNonterminals.ContainsKey(s))
                         {
@@ -1013,10 +1069,5 @@ public class ContextFreeGrammar
         }
 
         return g;
-    }
-
-    public IEnumerable<Token> GenerateTokens(string src)
-    {
-        return lexer.GenerateTokens(src);
     }
 }
