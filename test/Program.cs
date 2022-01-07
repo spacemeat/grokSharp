@@ -483,7 +483,36 @@ bool Test_first_follow_0()
     return true;
 }
 
+bool Test_first_follow_1()
+{
+    Console.WriteLine($"\n  ---------------- PredParse ITE (dragon book p 191):");
+
+    var l = new RegexLexer();
+    l.Lex("a", @"a");
+    l.Lex("b", @"b");
+    l.Lex("e", @"e");
+    l.Lex("i", @"i");
+    l.Lex("t", @"t");
+
+    var g = new ContextFreeGrammar(l.Terminals, 1);
+    g.Prod("S", new [] { "i", "E", "t", "S", "S0" }, true );
+    g.Prod("S", new [] { "a" } );
+    g.Prod("S0", new [] { "e", "S" } );
+    g.Prod("S0", new [] { string.Empty } );
+    g.Prod("E", new [] { "b" } );
+
+    Console.WriteLine($"\n  - BNF: \n{g}");
+
+    g.ComputeFirstsAndFollows();
+
+    var pp = new PredictiveParser(l, g);
+    Console.WriteLine($"\nParse table:\n{pp.PrintParseTable()}");
+
+    return true;
+}
+
 //Test_humon();
 //Test_aces();
 //Test_sab();
 Test_first_follow_0();
+Test_first_follow_1();
