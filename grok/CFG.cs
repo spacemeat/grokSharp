@@ -268,14 +268,19 @@ public class ContextFreeGrammar
     HashSet<string> terminals = new HashSet<string>();
     ProductionSet productions = new ProductionSet();
     string startSymbol = string.Empty;
-    HashSet<string> usedNonterminalNames = new HashSet<string>();
+    HashSet<string> usedSymbols = new HashSet<string>();
     int cavepersonDebugging = 0;
+    Dictionary<string, HashSet<string>> first = new Dictionary<string, HashSet<string>>();
+    Dictionary<string, HashSet<string>> follow = new Dictionary<string, HashSet<string>>();
+
+    string eofString = string.Empty;
 
     public ContextFreeGrammar(IEnumerable<string> terminals, int cavepersonDebugging = 0)
     {
         this.terminals = new HashSet<string>(terminals);
         this.cavepersonDebugging = cavepersonDebugging;
         this.productions.cavepersonDebugging = cavepersonDebugging;
+        this.eofString = GetNewSymbol("EOF");
     }
 
     public ContextFreeGrammar(IEnumerable<string> terminals, ContextFreeGrammar template)
@@ -284,6 +289,7 @@ public class ContextFreeGrammar
         this.productions = template.productions.Clone();
         this.startSymbol = template.startSymbol;
         this.cavepersonDebugging = template.cavepersonDebugging;
+        this.eofString = GetNewSymbol("EOF");
     }
 
     public ContextFreeGrammar(ContextFreeGrammar template)
@@ -291,9 +297,10 @@ public class ContextFreeGrammar
         this.terminals = new HashSet<string>(template.terminals);
         this.productions = template.productions.Clone();
         this.startSymbol = template.startSymbol;
-        this.usedNonterminalNames.UnionWith(this.Terminals);
-        this.usedNonterminalNames.UnionWith(this.Nonterminals);
+        this.usedSymbols.UnionWith(this.Terminals);
+        this.usedSymbols.UnionWith(this.Nonterminals);
         this.cavepersonDebugging = template.cavepersonDebugging;
+        this.eofString = GetNewSymbol("EOF");
     }
 
     private void Report(string s, int level = 1)
@@ -304,24 +311,235 @@ public class ContextFreeGrammar
 
     public void Prod(string nonterminal, IEnumerable<string> derivation, bool startSymbol = false)
     {
+        bool needNewEof = nonterminal == eofString;
+
         productions.Add(nonterminal, derivation);
         if (startSymbol)
         {
             this.startSymbol = nonterminal;
             productions.MoveToFront(this.startSymbol);
         }
-        this.usedNonterminalNames.Add(nonterminal);
+        this.usedSymbols.Add(nonterminal);
+
+        if (needNewEof)
+            { eofString = GetNewSymbol("EOF"); }
     }
 
     public string StartSymbol => startSymbol;
 
     public HashSet<string> Terminals => terminals;
 
+    public string EofString => eofString;
+
     public IEnumerable<string> Nonterminals => productions.Nonterminals;
+
+    public IEnumerable<(string nonterminal, int idx, ProdRule prodRule)> Productions => productions.Productions;
+
+    public IEnumerable<string> DerivationsOf(string nonterminal, int ruleIdx) => productions.DerivationsOf(nonterminal, ruleIdx);
 
     public override string ToString() => $"Start: {startSymbol}\n{productions}";
 
-    public string GetNewNonterminal(string baseName = "")
+#region Frist
+
+    HashSet<string> First_rec(string symbol, HashSet<string> visited)
+    {
+        HashSet<string>? f;
+        if (this.first.TryGetValue(symbol, out f))
+            { return f; }
+
+        f = new HashSet<string>();
+
+        // if symbol is a terminal, return { symbol }
+        if (terminals.Contains(symbol))
+        {
+            f.Add(symbol);
+            return f;
+        }
+
+        // symbol is a nonterminal (hopefully)
+
+        if (visited.Contains(symbol))
+            { throw new Exception("Grammar is left-recursive on nonterminal '{symbol}'. First() can't run."); }
+        visited.Add(symbol);
+
+        var prod = productions.ProductionOf(symbol);
+        foreach (var (rule, idxs) in prod.rules.WithIdxs())
+        {
+            // if symbol-*>null, add null to first
+            if (rule.derivation.Count() == 1 &&
+                rule.derivation[0] == string.Empty)
+            {
+                f.Add(string.Empty);
+            }
+            else
+            {
+                f.UnionWith(First_pvt(rule.derivation, visited));
+            }
+        }
+
+        this.first.Add(symbol, f);
+        return f;
+    }
+
+    HashSet<string> First_pvt(IEnumerable<string> stringOfSymbols, HashSet<string> visited)
+    {
+        var f = new HashSet<string>();
+
+        foreach (var (sym, symIdx) in stringOfSymbols.WithIdxs())
+        {
+            var firstOfSym = new HashSet<string>(First_rec(sym, visited));
+            var ruleDerivesNull = firstOfSym.Contains(string.Empty);
+            if (ruleDerivesNull)
+                { firstOfSym.Remove(string.Empty); }
+
+            f.UnionWith(firstOfSym);
+
+            // if this sym does not derive null, we're done
+            if (ruleDerivesNull == false)
+                { break; }
+
+            // if we're on the last sym and we have always derived null for
+            // each sym in the rule, make sure to add null to f
+            if (symIdx == stringOfSymbols.Count() - 1)
+                { f.Add(string.Empty); }
+        }
+
+        return f;
+    }
+
+    private void ComputeFirsts()
+    {
+        first.Clear();
+        var visited = new HashSet<string>();
+
+        first.Add(string.Empty, new HashSet<string>(new [] { string.Empty }));
+
+        foreach (var t in Terminals)
+            { First_rec(t, visited); }
+
+        foreach (var n in Nonterminals)
+            { First_rec(n, visited); }
+    }
+
+    public HashSet<string> First(string symbol)
+    {
+        return first[symbol];
+    }
+
+    public HashSet<string> First(IEnumerable<string> stringOfSymbols)
+    {
+        var visited = new HashSet<string>();
+        return First_pvt(stringOfSymbols, visited);
+    }
+
+#endregion
+
+#region Follow
+
+    private void ComputeFollows()
+    {
+        follow.Clear();
+
+        //  follow(startSymbol) unionwith {EOF}
+        //  for each production rule A->x0x1x2..xn:
+        //      for each symbol xi in [x0..xn-1):
+        //          if xi is a nonterminal:
+        //              f = first(xi+1..xn) - null
+        //              follow(xi) unionwith f
+        //  for each production rule A->x0x1x2..xn:
+        //      for each symbol xi in [xn-1..x0]:
+        //          if xi is a nonterminal:
+        //              follow(xi) unionwith follow(A)
+        //          if first(xi+1..xn) does not contain null:
+        //              break
+
+        //  follow(startSymbol) unionwith {EOF}
+        follow.Add(startSymbol, new HashSet<string>(new [] { eofString }));
+
+        Report("phase 1", 2);
+
+        //  for each production rule A->x0x1x2..xn:
+        foreach (var (A, ruleIdx, rule) in productions.Productions)
+        {
+            Report($"Examining {A} -> {string.Join(' ', rule.derivation)}", 2);
+            //  for each symbol xi in [x0..xn-1):
+            foreach (var (xi, symIdx) in rule.derivation.Take(rule.derivation.Count() - 1).WithIdxs())
+            {
+                //  if xi is a nonterminal:
+                if (Nonterminals.Contains(xi))
+                {
+                    var f = new HashSet<string>(First(rule.derivation.Skip(symIdx + 1)));
+
+                    Report($" - B == {xi}; first({string.Join(' ', rule.derivation.Skip(symIdx + 1))}) == {{{string.Join(',', f)}}}", 2);
+                    //  f = first(xi+1..xn) - null
+                    if (f.Contains(string.Empty))
+                        { f.Remove(string.Empty); }
+
+                    //  follow(xi) unionwith f
+                    follow.Get(xi).UnionWith(f);
+                    Report($" - recorded: follow({xi}).UnionWith({string.Join(',', f)}) == {{{string.Join(',', follow[xi])}}}", 2);
+                }
+            }
+        }
+
+        Report($"follow so far: ", 2);
+        foreach (var kvp in follow)
+        {
+            Report($" - {kvp.Key}: {{{string.Join(',', kvp.Value)}}}", 2);
+        }
+
+        Report("phase 2", 2);
+
+        //  for each production rule A->x0x1x2..xn:
+        foreach (var (A, ruleIdx, rule) in productions.Productions)
+        {
+            Report($"Examining {A} -> {string.Join(' ', rule.derivation)}", 2);
+            //  for each symbol xi in [xn-1..x0]:
+            foreach (var (xi, i) in (from s in rule.derivation select s).WithIdxs().Reverse())
+            {
+                Report($" - i == {i}; B == {xi}", 2);
+                //  if xi is a nonterminal:
+                if (Nonterminals.Contains(xi))
+                {
+                    //  follow(xi) unionwith follow(A)
+                    var fa = new HashSet<string>(follow[A]);
+                    follow.Get(xi).UnionWith(fa);
+                    Report($" - recorded: follow({xi}).UnionWith({string.Join(',', fa)}) == {{{string.Join(',', follow[xi])}}}", 2);
+
+                    //  if first(xi..xn) does not contain null:
+                    //      break
+                    Report($" - checking if {string.Join(' ', rule.derivation.Skip(i))} derives null", 2);
+
+                    var f = First(rule.derivation.Skip(i));
+                    if (f.Contains(string.Empty) == false)
+                    {
+                        Report($" - - no, stop checking", 2);
+                        break;
+                    }
+                }
+                else
+                    { break; }
+            }
+        }
+    }
+
+    public HashSet<string> Follow(string nonterminal)
+    {
+        return follow[nonterminal];
+    }
+
+#endregion
+
+    public void ComputeFirstsAndFollows()
+    {
+        if (eofString == string.Empty)
+            { eofString = GetNewSymbol("EOF"); }
+
+        ComputeFirsts();
+        ComputeFollows();
+    }
+
+    public string GetNewSymbol(string baseName = "")
     {
         if (baseName == string.Empty)
             { baseName = "NewNonterminal"; }
@@ -329,10 +547,10 @@ public class ContextFreeGrammar
         for (int i = 0; i < int.MaxValue; ++i)
         {
             var name = $"{baseName}{i}";
-            if (usedNonterminalNames.Contains(name) == false)
+            if (usedSymbols.Contains(name) == false)
             {
                 Report($"MAKING NEW NONTERMINAL {name}", 3);
-                usedNonterminalNames.Add(name);
+                usedSymbols.Add(name);
                 return name;
             }
         }
@@ -616,7 +834,7 @@ public class ContextFreeGrammar
         if (productions.ProductionsReferencing(startSymbol).Count() > 0)
         {
             var g = new ContextFreeGrammar(this);
-            var newStartSymbol = g.GetNewNonterminal(startSymbol);
+            var newStartSymbol = g.GetNewSymbol(startSymbol);
             Report($"Abstracting start symbol {newStartSymbol} -> {startSymbol}", 2);
             g.Prod(newStartSymbol, new [] {startSymbol}, true);
             return g;
@@ -685,7 +903,7 @@ public class ContextFreeGrammar
                         }
                         else
                         {
-                            var newNonterm = g.GetNewNonterminal(s);
+                            var newNonterm = g.GetNewSymbol(s);
                             adds.Add((newNonterm, new List<string>(new [] { s } ) ));
 
                             terminalsToNonterminals[s] = newNonterm;
@@ -738,14 +956,14 @@ public class ContextFreeGrammar
                 {
                     var s0 = der[der.Count() - 2];
                     var s1 = der[der.Count() - 1];
-                    var newNonterm = g.GetNewNonterminal(nonterm);
+                    var newNonterm = g.GetNewSymbol(nonterm);
                     adds.Add((newNonterm, new List<string>(new [] {s0, s1})));
                     der = der.Take(der.Count() - 2).ToList();
                     der.Add(newNonterm);
                     /*
                     var s0 = der[0];
                     var s1 = der[1];
-                    var newNonterm = g.GetNewNonterminal(nonterm);
+                    var newNonterm = g.GetNewSymbol(nonterm);
                     adds.Add((newNonterm, new List<string>(new [] {s0, s1})));
                     der = der.Skip(1).ToList();
                     der[0] = newNonterm;
@@ -821,7 +1039,7 @@ public class ContextFreeGrammar
         // to be replaced by:
 
         //  A_0 = newNonterm()
-        var newNonterm = GetNewNonterminal(nonterm);
+        var newNonterm = GetNewSymbol(nonterm);
 
         //  for each A->y in N:
         //          prod( A, [*y A_0] )
@@ -1009,7 +1227,7 @@ public class ContextFreeGrammar
 
                         Report($"Abstracting sequence: {ai} -> {string.Join(' ', ard.Take(lengthOfMatch))}", 2);
 
-                        var newNonterm = g.GetNewNonterminal(ai);
+                        var newNonterm = g.GetNewSymbol(ai);
 
                         // add new nonterm to tracking
                         tracking.Add(newNonterm);

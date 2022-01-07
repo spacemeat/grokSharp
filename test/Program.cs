@@ -440,6 +440,50 @@ bool Test_lf6()
 }
 
 
+bool Test_first_follow_0()
+{
+    Console.WriteLine($"\n  ---------------- First and Follow (dragon book p 189):");
+
+    var l = new RegexLexer();
+    l.Lex("+", @"\+");
+    l.Lex("*", @"\*");
+    l.Lex("(", @"\(");
+    l.Lex(")", @"\)");
+    l.Lex("id", @"[A-Za-z]+");
+
+    var g = new ContextFreeGrammar(l.Terminals, 1);
+    g.Prod("E", new [] { "T", "E0" }, true );
+    g.Prod("E0", new [] { "+", "T", "E0" } );
+    g.Prod("E0", new [] { string.Empty } );
+    g.Prod("T", new [] { "F", "T0" } );
+    g.Prod("T0", new [] { "*", "F", "T0" } );
+    g.Prod("T0", new [] { string.Empty } );
+    g.Prod("F", new [] { "(", "E", ")" } );
+    g.Prod("F", new [] { "id" } );
+
+    Console.WriteLine($"\n  - BNF: \n{g}");
+
+    g.ComputeFirstsAndFollows();
+
+    Console.WriteLine($"\n  - FIRST(E):  \n{{ {string.Join(", ", g.First("E"))} }}");
+    Console.WriteLine($"\n  - FIRST(T):  \n{{ {string.Join(", ", g.First("T"))} }}");
+    Console.WriteLine($"\n  - FIRST(F):  \n{{ {string.Join(", ", g.First("F"))} }}");
+    Console.WriteLine($"\n  - FIRST(E0): \n{{ {string.Join(", ", g.First("E0"))} }}");
+    Console.WriteLine($"\n  - FIRST(T0): \n{{ {string.Join(", ", g.First("T0"))} }}");
+
+    Console.WriteLine($"\n  - FOLLOW(E):  \n{{ {string.Join(", ", g.Follow("E"))} }}");
+    Console.WriteLine($"\n  - FOLLOW(T):  \n{{ {string.Join(", ", g.Follow("T"))} }}");
+    Console.WriteLine($"\n  - FOLLOW(F):  \n{{ {string.Join(", ", g.Follow("F"))} }}");
+    Console.WriteLine($"\n  - FOLLOW(E0): \n{{ {string.Join(", ", g.Follow("E0"))} }}");
+    Console.WriteLine($"\n  - FOLLOW(T0): \n{{ {string.Join(", ", g.Follow("T0"))} }}");
+
+    var pp = new PredictiveParser(l, g);
+    Console.WriteLine($"\nParse table:\n{pp.PrintParseTable()}");
+
+    return true;
+}
+
 //Test_humon();
 //Test_aces();
-Test_sab();
+//Test_sab();
+Test_first_follow_0();
