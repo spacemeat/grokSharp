@@ -61,6 +61,7 @@ public struct Token
 public abstract class Lexer
 {
     public virtual string [] Terminals { get; } = new string [] {};
+    private string eofString = string.Empty;
 
     public IEnumerable<Token> GenerateTokens(string src)
     {
@@ -98,6 +99,8 @@ public class RegexLexer : Lexer
             int bestMatchLen = 0;
             string bestMatchStr = string.Empty;
             bool bestMatchProducesToken = true;
+            var substr = src.Substring(backCur, Math.Max(0, Math.Min(5, src.Length - backCur - 5)));
+            Console.WriteLine($"Looking for rules for input at {backCur + 1}: {substr}...");
 
             foreach (var (rule, idx) in lexRules.Entries.WithIdxs())
             {
@@ -108,19 +111,23 @@ public class RegexLexer : Lexer
                 if (re == null)
                     { continue; }
                 MatchCollection matches = re.Matches(src, backCur);
-                if (matches == null)
+                if (matches == null || matches.Count() == 0)
                     { continue; }
-                foreach (Match match in matches)
+
+                var match = matches[0];
+                var len = match.Groups[0].Length;
+                if (match.Groups[0].Index != backCur)
+                    { continue; }
+
+                Console.WriteLine($"{terminal} -- {rule.value.pattern} -- match len = {len} -- match: {match}");
+
+                if (len > bestMatchLen)
                 {
-                    var len = match.Groups[0].Length;
-                    if (len > bestMatchLen && match.Groups[0].Index == backCur)
-                    {
-                        bestMatchTerminal = terminal;
-                        bestMatchTerminalRuleIdx = idx;
-                        bestMatchLen = len;
-                        bestMatchStr = match.Groups[0].Value;
-                        bestMatchProducesToken = rule.value.producesTokens;
-                    }
+                    bestMatchTerminal = terminal;
+                    bestMatchTerminalRuleIdx = idx;
+                    bestMatchLen = len;
+                    bestMatchStr = match.Groups[0].Value;
+                    bestMatchProducesToken = rule.value.producesTokens;
                 }
             }
 

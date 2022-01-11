@@ -27,11 +27,11 @@ using ParseTable_pvt =
 public class Node
 {
     public string Label { get; private set; }
-    private List<Node> children = new List<Node>();
-
     public IEnumerable<Node> Children => from ch in children select ch;
 
-    public Node(string label, bool terminal)
+    List<Node> children = new List<Node>();
+
+    public Node(string label)
     {
         Label = label;
     }
@@ -39,6 +39,23 @@ public class Node
     public void AddNode(Node newNode)
     {
         children.Add(newNode);
+    }
+
+    public override string ToString()
+    {
+        var sb = new StringBuilder();
+        ToString_rec(sb, 0);
+        return sb.ToString();
+    }
+
+    void ToString_rec(StringBuilder sb, int depth)
+    {
+        sb.Append($"{new string(' ', depth)}{Label}\n");
+
+        foreach (var ch in Children)
+        {
+            ch.ToString_rec(sb, depth + 1);
+        }
     }
 }
 
@@ -65,8 +82,32 @@ public class ParseTable
         ptte.Add(ruleIdx);
     }
 
+    /*
     public IEnumerable<int> Get(string nonterm, string inputTerm) =>
         from i in pt[nonterm][inputTerm] select i;
+    */
+    public IEnumerable<int> Get(string nonterm, string inputTerm)
+    {
+        Console.WriteLine($"Trying GET({nonterm}, {inputTerm})");
+        ParseTableNontermEntry? ptne;
+        if (pt.TryGetValue(nonterm, out ptne))
+        {
+            ParseTableTermEntry? ptte;
+            if (ptne.TryGetValue(inputTerm, out ptte))
+            {
+                return from i in ptte select i;
+            }
+            else
+            {
+                throw new Exception($"No entry for input term {inputTerm}");
+            }
+        }
+        else
+        {
+            throw new Exception($"No entry for nonterm {nonterm}");
+        }
+    }
+
 
     public string ToString(ContextFreeGrammar g)
     {
@@ -188,9 +229,71 @@ public class PredictiveParser : RecursiveDescentParser
 
     public string PrintParseTable() => parseTable.ToString(grammar);
 
-    protected override Node Parse_impl(IEnumerable<Token> tokens)
+    protected override Node Parse_impl(IEnumerable<Token> tokenStream)
     {
-        throw new Exception("Not impl");
+        IEnumerator<Token> tokens = tokenStream.GetEnumerator();
+
+        var stack = new Stack<string>();
+        stack.Push(grammar.StartSymbol);
+
+        var nodeStack = new Stack<Node>();
+        nodeStack.Push(new Node(grammar.StartSymbol));
+        var topNode = nodeStack.Peek();
+
+        tokens.MoveNext();
+        bool eofReached = false;
+
+        while (stack.Count() > 0)
+        {
+            var X = stack.Peek();
+            var n = nodeStack.Peek();
+
+            string a = grammar.EofString;
+            if (eofReached == false)
+                { a = tokens.Current.Terminal; }
+
+            if (grammar.Terminals.Contains(X))
+            {
+                if (X == a)
+                {
+                    stack.Pop();
+                    nodeStack.Pop();
+                    eofReached = ! tokens.MoveNext();
+                }
+                else
+                {
+                    throw new Exception($"Error: Expected terminal {X}, found {a}");
+                }
+            }
+
+            else
+            {
+                int [] rules = parseTable.Get(X, a).ToArray();
+                if (rules.Length > 0)
+                {
+                    stack.Pop();
+                    nodeStack.Pop();
+                    // TODO: Choose an ambiguous rule
+                    int rule = rules[0];
+                    var derivation = grammar.DerivationsOf(X, rule);
+                    if (derivation.Count() != 1 || derivation.First() != string.Empty)
+                    {
+                        var newNodes = (from s in derivation select new Node(s)).ToArray();
+                        foreach (var nn in newNodes)
+                            { n.AddNode(nn); }
+                        foreach (var nn in newNodes.Reverse())
+                        {
+                            stack.Push(nn.Label);
+                            nodeStack.Push(nn);
+                        }
+                    }
+                }
+                else
+                    { throw new Exception($"Error: Bad syntax: {a}"); }
+            }
+        }
+
+        return topNode;
     }
 }
 

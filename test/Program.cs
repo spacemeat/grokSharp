@@ -480,6 +480,11 @@ bool Test_first_follow_0()
     var pp = new PredictiveParser(l, g);
     Console.WriteLine($"\nParse table:\n{pp.PrintParseTable()}");
 
+    var input = "bee+foo*(baz+cow+ant)*cat+pig";
+
+    var n = pp.Parse(input);
+    Console.WriteLine($"\nInput: {input}\nParse tree:\n{n}");
+
     return true;
 }
 
@@ -515,4 +520,4 @@ bool Test_first_follow_1()
 //Test_aces();
 //Test_sab();
 Test_first_follow_0();
-Test_first_follow_1();
+//Test_first_follow_1();
